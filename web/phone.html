@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f1">
+  <title>AI Visual Assistant</title>
+  <link rel="icon" href="/ui/icon-192.png">
+  <link rel="apple-touch-icon" href="/ui/icon-192.png">
+  <link rel="manifest" href="/ui/manifest.webmanifest">
+  <link rel="stylesheet" href="/ui/style.css">
+  <script type="module" src="/ui/phone.js"></script>
+</head>
+<body>
+  <header class="topbar"><div class="top-inner">
+    <span class="brand"><span class="brand-mark"><svg aria-hidden="true"><use href="/ui/icons.svg#aperture"/></svg></span><span>AI Visual Assistant</span></span>
+    <button id="install" type="button" hidden><svg aria-hidden="true"><use href="/ui/icons.svg#download"/></svg><span data-label="install">Install app</span></button>
+  </div></header>
+  <main class="shell phone-shell mobile-assistant">
+    <h1 data-label="title">Voice assistant</h1>
+    <div class="mobile-status">
+      <p id="voice-state" data-state="IDLE">Assistant off</p>
+      <span id="overall" class="status" data-state="idle"><i aria-hidden="true"></i><span>Not paired</span></span>
+    </div>
+    <p id="voice-announcement" class="sr-only" role="status" aria-atomic="true"></p>
+    <div class="mobile-controls">
+      <button id="start-assistant" type="button" class="primary"><svg aria-hidden="true"><use href="/ui/icons.svg#sparkles"/></svg><span data-label="start">Start Assistant</span></button>
+      <button id="stop-assistant" type="button" class="stop" disabled><svg aria-hidden="true"><use href="/ui/icons.svg#stop"/></svg><span data-label="stop">Stop Assistant</span></button>
+      <button id="talk-again" type="button" disabled><svg aria-hidden="true"><use href="/ui/icons.svg#mic"/></svg><span data-label="talk">Talk Again</span></button>
+      <button id="repeat-answer" type="button" disabled><svg aria-hidden="true"><use href="/ui/icons.svg#speaker"/></svg><span data-label="repeat">Repeat Answer</span></button>
+      <button id="stop-speaking" type="button" hidden><svg aria-hidden="true"><use href="/ui/icons.svg#stop"/></svg><span data-label="stopSpeech">Stop speaking</span></button>
+    </div>
+    <p class="notice" id="notice" role="status" hidden></p>
+    <form id="pair-form" class="mobile-section pair-form" aria-labelledby="pair-heading" hidden>
+      <h2 id="pair-heading" data-label="pairHeading">Pair with your laptop</h2>
+      <p id="pair-help" data-label="pairHelp">Enter the pairing code shown when the server started.</p>
+      <label for="pair-code" data-label="pairCode">Pairing code</label>
+      <div class="input-row"><input id="pair-code" type="password" autocomplete="off" autocapitalize="off" required maxlength="256" aria-describedby="pair-help"><button class="primary" type="submit" data-label="pair">Pair</button></div>
+    </form>
+    <section class="mobile-section" aria-labelledby="privacy-heading">
+      <h2 id="privacy-heading" data-label="privacy">Session consent</h2>
+      <label class="mobile-check"><input id="session-consent" type="checkbox"><span data-label="imageConsent">Send my questions and selected camera or archive images to OpenAI during this session. Stop Assistant withdraws consent.</span></label>
+      <label class="mobile-check"><input id="speech-consent" type="checkbox"><span data-label="speechConsent">Allow browser-managed speech if needed. The browser provider may receive audio or answer text.</span></label>
+    </section>
+    <section id="mobile-answer-section" class="mobile-section" aria-labelledby="mobile-answer-heading" hidden>
+      <h2 id="mobile-answer-heading" data-label="answer">Answer</h2>
+      <p id="mobile-answer" class="ocr-text"></p>
+    </section>
+    <details id="type-tools" class="mobile-section" hidden>
+      <summary data-label="type">Type a question</summary>
+      <form id="mobile-question-form">
+        <label for="mobile-question" data-label="question">Question</label>
+        <textarea id="mobile-question" rows="3" required maxlength="800"></textarea>
+        <button id="mobile-ask" class="primary" type="submit" data-label="ask">Ask</button>
+      </form>
+    </details>
+    <details class="mobile-section">
+      <summary data-label="settings">Settings</summary>
+      <label for="mobile-language" data-label="language">Speech and answer language</label>
+      <select id="mobile-language"><option value="en" lang="en">English</option><option value="fr" lang="fr">Fran&#231;ais</option></select>
+      <button id="mobile-speech-pack" type="button" data-label="speechPack" hidden>Download on-device speech pack</button>
+    </details>
+    <details id="manual-tools" class="mobile-section">
+      <summary data-label="manual">Manual camera and Ask AI</summary>
+      <section aria-labelledby="preview-heading">
+        <h2 id="preview-heading" data-label="preview">Camera preview</h2>
+        <div class="viewfinder phone-view">
+          <video id="preview" autoplay muted playsinline aria-labelledby="preview-heading"></video>
+          <div class="video-empty" id="preview-empty"><svg aria-hidden="true"><use href="/ui/icons.svg#camera"/></svg><span data-label="cameraOff">Camera off</span></div>
+        </div>
+        <div class="controls">
+          <button id="start-camera" type="button" data-label="startCamera">Start Camera</button>
+          <button id="start-stream" type="button" class="primary" data-label="startStream" disabled>Start Streaming</button>
+          <button id="stop" type="button" class="stop" data-label="stopStream" disabled>Stop Streaming</button>
+        </div>
+      </section>
+      <section id="assistant" class="assistant" aria-labelledby="assistant-heading" lang="en"></section>
+      <a class="mobile-dashboard" href="/" data-label="dashboard">Laptop dashboard</a>
+    </details>
+  </main>
+</body>
+</html>

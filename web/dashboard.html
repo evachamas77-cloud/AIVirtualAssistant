@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5f1">
+  <title>Live monitor | AI Visual Assistant</title>
+  <link rel="icon" href="/ui/icon-192.png">
+  <link rel="stylesheet" href="/ui/style.css">
+  <script type="module" src="/ui/dashboard.js"></script>
+  <script type="module" src="/ui/assistant.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="top-inner">
+      <a class="brand" href="/" aria-label="AI Visual Assistant dashboard"><span class="brand-mark"><svg aria-hidden="true"><use href="/ui/icons.svg#aperture"/></svg></span><span>AI Visual Assistant<small>Local workspace</small></span></a>
+      <nav aria-label="Views"><a href="/" aria-current="page"><svg aria-hidden="true"><use href="/ui/icons.svg#monitor"/></svg> Dashboard</a><a href="/phone"><svg aria-hidden="true"><use href="/ui/icons.svg#phone"/></svg> Phone camera</a></nav>
+    </div>
+  </header>
+  <main class="shell">
+    <div class="page-heading"><div><p class="eyebrow">Capture workspace</p><h1>Live monitor</h1></div><span class="status" id="overall" data-state="idle"><i></i><span>Not paired</span></span></div>
+    <div class="monitor-layout">
+      <section class="feed" aria-labelledby="feed-heading">
+        <header class="section-heading"><h2 id="feed-heading">Camera feed</h2><span class="transport">WebRTC</span></header>
+        <div class="viewfinder">
+          <video id="feed-video" autoplay muted playsinline aria-label="Live video from the phone camera"></video>
+          <div class="video-empty" id="feed-empty"><span class="empty-icon"><svg aria-hidden="true"><use href="/ui/icons.svg#video-off"/></svg></span><span id="feed-message" role="status">No live feed</span></div>
+        </div>
+      </section>
+      <aside class="connection" aria-labelledby="device-heading">
+        <header class="section-heading"><h2 id="device-heading">Connection</h2></header>
+        <div class="device-row"><span class="device-icon"><svg aria-hidden="true"><use href="/ui/icons.svg#phone"/></svg></span><div><strong id="device-name">No camera connected</strong><p id="device-state" role="status">Waiting for a camera</p></div></div>
+        <dl class="stats">
+          <div><dt>Viewers</dt><dd id="viewers">0</dd></div>
+          <div><dt>Frames sampled</dt><dd id="sampled">0</dd></div>
+          <div><dt>Frames saved</dt><dd id="stored">0</dd></div>
+          <div class="sample-row"><dt>Last sample</dt><dd id="sample-result">None</dd></div>
+        </dl>
+        <form id="pair-form" class="pair-form">
+          <label for="pair-code">Pairing code</label>
+          <div class="input-row"><input id="pair-code" type="password" autocomplete="off" required maxlength="256"><button class="primary" type="submit"><svg aria-hidden="true"><use href="/ui/icons.svg#lock"/></svg> Pair</button></div>
+        </form>
+        <p class="notice" id="notice" role="status" hidden></p>
+      </aside>
+    </div>
+    <section id="assistant" class="assistant" aria-labelledby="assistant-heading"></section>
+    <section class="archive" aria-labelledby="archive-heading">
+      <header class="section-heading">
+        <h2 id="archive-heading"><svg aria-hidden="true"><use href="/ui/icons.svg#archive"/></svg> Stored frames</h2>
+        <div class="pager"><button class="icon-button" id="newer" type="button" disabled title="Newer frames" aria-label="Newer frames"><svg aria-hidden="true"><use href="/ui/icons.svg#left"/></svg></button><button class="icon-button" id="older" type="button" disabled title="Older frames" aria-label="Older frames"><svg aria-hidden="true"><use href="/ui/icons.svg#right"/></svg></button></div>
+      </header>
+      <p class="archive-empty" id="archive-empty">No frames displayed</p>
+      <div class="timeline" id="timeline" aria-label="Frame timeline"></div>
+      <article id="frame-detail" class="frame-detail" aria-labelledby="detail-heading" hidden>
+        <header class="section-heading"><h2 id="detail-heading">Frame details</h2><span id="frame-id" class="transport"></span></header>
+        <dl class="frame-facts"><div><dt>Captured</dt><dd id="frame-time"></dd></div><div><dt>Resolution</dt><dd id="frame-size"></dd></div><div><dt>Sharpness</dt><dd id="frame-sharpness"></dd></div></dl>
+        <div class="detail-columns"><section><h3>OCR text</h3><p class="ocr-text" id="frame-ocr"></p></section><section><h3>Detected objects</h3><ul class="detections" id="frame-objects"></ul></section></div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
