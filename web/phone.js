@@ -1,9 +1,9 @@
 import { suspendManualVoice } from "./assistant.js";
 import { api, byId, closePeer, negotiate, newPeer, notice, setStatus, setupPairing } from "./common.js";
 import { answerError, questionSource } from "./mobile-question.js";
-import { strings } from "./mobile-strings.js";
+import { sceneMessage, strings } from "./mobile-strings.js";
 import { PhoneCamera } from "./phone-camera.js";
-import { SpeechRecognition, localAvailability, locale, mobileSpeaker } from "./voice.js";
+import { SpeechRecognition, localAvailability, locale, mobileSpeaker, voices } from "./voice.js";
 import { State, VoiceSession } from "./voice-session.js";
 
 const language = byId("mobile-language");
@@ -17,9 +17,11 @@ const start = byId("start-assistant");
 const stop = byId("stop-assistant");
 const talk = byId("talk-again");
 const typed = byId("mobile-question");
+const describeChanges = byId("describe-changes");
 const text = key => strings[language.value]?.[key] ?? strings.en[key];
 let paired = false, pairAttempt = 0, speechPack = "unavailable", packCheck = 0;
 let display = { state: State.IDLE, note: "idle", active: false, hasAnswer: false };
+let scenePoll = null, lastChange = null;
 
 const camera = new PhoneCamera({
   getMedia: navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices),
@@ -46,6 +48,8 @@ function setVoiceDisplay(next) {
     showAnswer();
     manual.open = false;
   } else if (wasActive && !next.active) {
+    scenePoll?.abort();
+    lastChange = null;
     consent.checked = false;
     typed.value = "";
     byId("type-tools").open = false;
@@ -65,14 +69,17 @@ function render() {
   start.disabled = active || Boolean(camera.pending) || (camera.peer && camera.stage === "connecting");
   stop.disabled = !active;
   const canAsk = active && [State.LISTENING, State.READY, State.ERROR].includes(state);
-  talk.disabled = !canAsk || state === State.LISTENING || !SpeechRecognition ||
+  talk.disabled = (!canAsk && note !== "announcing") || state === State.LISTENING || !SpeechRecognition ||
     (!browserSpeech.checked && speechPack !== "available");
   byId("repeat-answer").disabled = !canAsk || !hasAnswer;
   byId("stop-speaking").hidden = state !== State.SPEAKING;
-  byId("mobile-ask").disabled = !canAsk;
+  byId("mobile-ask").disabled = !active || state === State.CONNECTING;
   byId("type-tools").hidden = !active;
   manual.hidden = active;
-  language.disabled = browserSpeech.disabled = pack.disabled = active;
+  browserSpeech.disabled = pack.disabled = active;
+  const selectedVoice = voices.select(language.value, browserSpeech.checked);
+  byId("mobile-voice-choice").textContent = !selectedVoice ? text("voiceMissing") : selectedVoice.regional
+    ? `${text("regionalVoice")} (${selectedVoice.language})` : "";
   pairing.hidden = paired;
   const cameraLabel = camera.stage === "cameraOff" ? (paired ? "paired" : "unpaired") : camera.stage;
   const cameraState = ["cameraReady", "streaming"].includes(camera.stage) ? "live" :
@@ -166,11 +173,17 @@ const voice = new VoiceSession({
     }
   },
   update: setVoiceDisplay, announce, answer: showAnswer, text,
+  report(timings) {
+    byId("mobile-timings").textContent = Object.entries(timings).filter(([, value]) => Number.isFinite(value))
+      .map(([stage, value]) => `${stage}: ${Math.round(value)} ms`).join(" | ");
+  },
 });
 
 async function checkSpeechPack() {
   const attempt = ++packCheck;
-  speechPack = await localAvailability(language.value).then(result => attempt === packCheck ? result : speechPack);
+  const result = await localAvailability(language.value);
+  if (attempt !== packCheck) return;
+  speechPack = result;
   pack.hidden = !(speechPack === "downloadable" && typeof SpeechRecognition?.install === "function");
   render();
 }
@@ -187,7 +200,10 @@ language.addEventListener("change", () => {
   speechPack = "unavailable";
   notice();
   localize();
-  void checkSpeechPack();
+  voice.setLanguage(language.value);
+  void checkSpeechPack().then(() => {
+    if (speechPack === "available" && voice.state === State.ERROR && display.note === "micUnavailable") voice.talkAgain();
+  });
 });
 pack.addEventListener("click", async () => {
   pack.disabled = true;
@@ -229,6 +245,26 @@ talk.addEventListener("click", () => voice.talkAgain());
 byId("repeat-answer").addEventListener("click", () => voice.repeat());
 byId("stop-speaking").addEventListener("click", () => voice.stopSpeaking());
 browserSpeech.addEventListener("change", render);
+describeChanges.addEventListener("change", () => {
+  if (!describeChanges.checked) {
+    scenePoll?.abort();
+    voice.cancelNotice();
+  }
+});
+
+async function pollChanges() {
+  if (scenePoll || !display.active || !describeChanges.checked || document.hidden) return;
+  const poll = scenePoll = new AbortController();
+  try {
+    const { change } = await api("/live/changes", { signal: poll.signal });
+    if (!change || poll.signal.aborted || change.id === lastChange || !describeChanges.checked) return;
+    lastChange = change.id;
+    const message = sceneMessage(change, language.value);
+    if (message) voice.offerNotice(message);
+  } catch { /* Optional local hints must not disrupt a conversation. */ }
+  finally { if (scenePoll === poll) scenePoll = null; }
+}
+setInterval(pollChanges, 1800);
 consent.addEventListener("change", () => { if (!consent.checked && display.active) voice.stop(); });
 byId("mobile-question-form").addEventListener("submit", event => {
   event.preventDefault();
@@ -267,6 +303,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pageshow", refreshPairing);
 setInterval(() => { if (!document.hidden) void refreshPairing(); }, 7000);
 localize();
+voices.subscribe(render);
 void checkSpeechPack();
 void refreshPairing();
 

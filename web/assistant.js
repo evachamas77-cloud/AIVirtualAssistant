@@ -70,10 +70,10 @@ root.innerHTML = `
 const get = id => byId("ai-" + id);
 const askTab = get("ask-tab");
 const searchTab = get("search-tab");
-const clock = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
+const clock = new Intl.DateTimeFormat(undefined, { timeZone: "Asia/Beirut", dateStyle: "medium", timeStyle: "medium" });
 const sourceLabels = {
   live: "Live camera", history: "Archive matches", frame: "Selected archive frame",
-  archive_fallback: "Latest archive frame (not live)",
+  archive_fallback: "Latest archive frame (not live)", local_guidance: "Camera limitation",
 };
 const voice = wireVoice(get, message => { get("voice-status").textContent = message; });
 let selectedFrame = null;

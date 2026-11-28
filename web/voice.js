@@ -1,6 +1,9 @@
+import { locale, voiceCatalog } from "./voice-catalog.js";
+
 export const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const speakEngine = window.speechSynthesis;
-export const locale = language => language === "fr" ? "fr-FR" : "en-US";
+export { locale };
+export const voices = voiceCatalog(speakEngine);
 
 export async function localAvailability(language) {
   if (typeof SpeechRecognition?.available !== "function") return "unavailable";
@@ -11,37 +14,41 @@ export async function localAvailability(language) {
   }
 }
 
-function preferredVoice(language, allowBrowser) {
-  const voices = speakEngine.getVoices().filter(voice => voice.lang.toLowerCase().startsWith(language));
-  return voices.find(voice => voice.localService && voice.lang === locale(language))
-    || voices.find(voice => voice.localService) || (allowBrowser && voices[0]);
-}
-
 export function mobileSpeaker() {
-  let finish = null;
+  let attempt = null;
   return {
     cancel() {
-      finish?.("cancelled");
-      speakEngine?.cancel();
+      if (attempt) {
+        attempt.abort();
+        attempt = null;
+        speakEngine?.cancel();
+      }
     },
-    play(text, { language, allowBrowser }) {
-      if (!speakEngine || !window.SpeechSynthesisUtterance || finish) return Promise.resolve("unavailable");
-      const voice = preferredVoice(language, allowBrowser);
-      if (!voice && !allowBrowser) return Promise.resolve("unavailable");
-      return new Promise(resolve => {
+    async play(text, { language, allowBrowser }, onStart = () => {}) {
+      if (!speakEngine || !window.SpeechSynthesisUtterance || attempt) return "unavailable";
+      const current = attempt = new AbortController();
+      const choice = voices.select(language, allowBrowser) || await voices.wait(language, allowBrowser, current.signal);
+      if (current.signal.aborted || !choice) {
+        if (attempt === current) attempt = null;
+        return current.signal.aborted ? "cancelled" : "voiceMissing";
+      }
+      return await new Promise(resolve => {
         const speech = new SpeechSynthesisUtterance(text);
-        speech.lang = locale(language);
-        if (voice) speech.voice = voice;
+        speech.lang = choice.language;
+        speech.voice = choice.voice;
         let timer;
         const done = result => {
-          if (finish !== done) return;
-          finish = null;
+          if (attempt !== current) return;
+          attempt = null;
           clearTimeout(timer);
+          current.signal.removeEventListener("abort", aborted);
           speech.onstart = speech.onend = speech.onerror = null;
           resolve(result);
         };
-        finish = done;
+        const aborted = () => done("cancelled");
+        current.signal.addEventListener("abort", aborted, { once: true });
         speech.onstart = () => {
+          onStart();
           clearTimeout(timer);
           timer = setTimeout(expired, 90000);
         };
@@ -65,7 +72,9 @@ export function wireVoice(get, announce) {
   const play = get("play");
   const replay = get("replay");
   const silence = get("stop-audio");
-  let recognition, utterance, answer;
+  let recognition, answer;
+  const playback = mobileSpeaker();
+  let playAttempt = 0;
   let opening = null;
 
   function setListening(active) {
@@ -92,6 +101,7 @@ export function wireVoice(get, announce) {
 
   mic.addEventListener("click", async () => {
     if (!SpeechRecognition || recognition || opening) return;
+    stopSpeech();
     const attempt = opening = {};
     pack.hidden = true;
     setListening(true);
@@ -147,6 +157,7 @@ export function wireVoice(get, announce) {
   stop.addEventListener("click", stopListening);
   lang.addEventListener("change", () => {
     cancelListening();
+    stopSpeech();
     pack.hidden = true;
   });
   pack.addEventListener("click", async () => {
@@ -163,27 +174,28 @@ export function wireVoice(get, announce) {
   });
 
   function stopSpeech() {
-    utterance = null;
-    speakEngine?.cancel();
+    ++playAttempt;
+    playback.cancel();
     silence.disabled = true;
   }
 
-  function speak() {
+  async function speak() {
     if (!speakEngine || !answer) return;
+    if (recognition || opening) return announce(lang.value === "fr"
+      ? "Arr\u00eatez le microphone avant d'\u00e9couter la r\u00e9ponse." : "Stop the microphone before playing the answer.");
     stopSpeech();
-    const voice = preferredVoice(answer.language, browserConsent.checked);
-    if (!voice && !browserConsent.checked) {
-      announce("No matching local voice is available. Keep reading or allow browser-managed speech.");
-      return;
-    }
-    const speech = utterance = new SpeechSynthesisUtterance(answer.text);
-    speech.lang = locale(answer.language);
-    if (voice) speech.voice = voice;
-    speech.onstart = () => { if (utterance === speech) announce("Speaking answer."); };
-    speech.onend = () => { if (utterance === speech) { stopSpeech(); announce("Playback finished."); } };
-    speech.onerror = () => { if (utterance === speech) { stopSpeech(); announce("Speech playback is unavailable."); } };
+    const selected = answer;
+    if (selected.language !== lang.value) return;
+    const current = playAttempt;
     silence.disabled = false;
-    speakEngine.speak(speech);
+    const result = await playback.play(selected.text, { language: selected.language, allowBrowser: browserConsent.checked },
+      () => { if (current === playAttempt) announce("Speaking answer."); });
+    if (current !== playAttempt) return;
+    silence.disabled = true;
+    if (result === "voiceMissing") announce(selected.language === "fr"
+      ? "Aucune voix fran\u00e7aise compatible. Installez une voix fran\u00e7aise dans les param\u00e8tres de l'appareil."
+      : "No compatible English voice. Install an English voice in your device's text-to-speech settings.");
+    else if (result !== "cancelled") announce(result === "played" ? "Playback finished." : "Speech playback is unavailable.");
   }
   for (const button of [play, replay]) button.addEventListener("click", speak);
   silence.addEventListener("click", () => { stopSpeech(); announce("Playback stopped."); });

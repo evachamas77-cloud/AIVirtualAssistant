@@ -1,5 +1,10 @@
 export const strings = {
   en: {
+    describeChanges: "Describe important changes",
+    announcing: "Describing a change...",
+    voiceMissing: "No compatible English voice. In device text-to-speech settings, install an English voice, then reopen the app.",
+    regionalVoice: "Using an English voice from another region",
+    timings: "Development timings (ms)",
     title: "Voice assistant", start: "Start Assistant", stop: "Stop Assistant", talk: "Talk Again",
     repeat: "Repeat Answer", stopSpeech: "Stop speaking", install: "Install app", answer: "Answer",
     pairHeading: "Pair with your laptop", pairHelp: "Enter the pairing code shown when the server started.",
@@ -36,6 +41,11 @@ export const strings = {
     busy: "A question is still processing. Please wait and try a new question.",
   },
   fr: {
+    describeChanges: "D\u00e9crire les changements importants",
+    announcing: "Description d'un changement...",
+    voiceMissing: "Aucune voix fran\u00e7aise compatible. Installez une voix fran\u00e7aise dans les param\u00e8tres de synth\u00e8se vocale de l'appareil, puis relancez l'application.",
+    regionalVoice: "Voix francophone d'une autre r\u00e9gion",
+    timings: "Temps de traitement (ms)",
     title: "Assistant vocal", start: "D\u00e9marrer", stop: "Arr\u00eater l'assistant", talk: "Reparler",
     repeat: "R\u00e9p\u00e9ter la r\u00e9ponse", stopSpeech: "Arr\u00eater la lecture", install: "Installer", answer: "R\u00e9ponse",
     pairHeading: "Associer le t\u00e9l\u00e9phone", pairHelp: "Entrez le code affich\u00e9 au d\u00e9marrage du serveur.",
@@ -72,3 +82,19 @@ export const strings = {
     busy: "Une question est d\u00e9j\u00e0 en cours d'analyse. Attendez avant de r\u00e9essayer.",
   },
 };
+
+const sceneNames = {
+  chair: ["A chair", "Une chaise"], bench: ["A bench", "Un banc"], couch: ["A couch", "Un canap\u00e9"],
+  "dining table": ["A table", "Une table"], bicycle: ["A bicycle", "Un v\u00e9lo"],
+  suitcase: ["A suitcase", "Une valise"], backpack: ["A backpack", "Un sac \u00e0 dos"], person: ["A person", "Une personne"],
+};
+
+export function sceneMessage(change, language) {
+  const fr = language === "fr";
+  if (change?.label === "text") return fr ? "Du texte lisible est visible." : "Readable text is visible.";
+  if (!Object.hasOwn(sceneNames, change?.label) || !["left", "center", "right"].includes(change.region)) return null;
+  const region = fr ? { left: "\u00e0 gauche", center: "au centre", right: "\u00e0 droite" }[change.region]
+    : { left: "on the left", center: "near the center", right: "on the right" }[change.region];
+  return fr ? `${sceneNames[change.label][1]} est visible ${region} de l'image.`
+    : `${sceneNames[change.label][0]} is visible ${region} of the camera view.`;
+}

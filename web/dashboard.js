@@ -17,8 +17,8 @@ const sampleLabels = {
   saved: "Saved", analysis_failed: "Inference unavailable", too_blurry: "Too blurry",
   duplicate: "Duplicate", min_interval: "Minimum interval", processing_error: "Processing error",
 };
-const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
-const shortTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+const dateTime = new Intl.DateTimeFormat(undefined, { timeZone: "Asia/Beirut", dateStyle: "medium", timeStyle: "medium" });
+const shortTime = new Intl.DateTimeFormat(undefined, { timeZone: "Asia/Beirut", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 function stopViewer() {
   const old = viewer;

@@ -113,7 +113,7 @@ test("final speech sends one question after the mic closes, speaks the answer, t
   mic.end();
   assert.equal(f.asks.length, 1);
   assert.equal(f.asks[0].question, "Que vois-tu ?");
-  assert.equal(f.session.askTyped("another"), false);
+  assert.equal(f.session.askTyped("Que vois-tu ?"), false);
   f.asks[0].resolve({ answer: "Un livre." });
   await flush();
   assert.equal(f.session.state, State.SPEAKING);
@@ -189,7 +189,7 @@ for (const phase of ["listening", "processing", "speaking"]) {
     assert.equal(f.mics.length, 1);
     assert.equal(f.answers.includes("stale answer"), false);
     if (phase === "listening") assert.equal(mic.aborted, true);
-    else assert.equal(f.asks[0].signal.aborted, true);
+    else if (phase === "processing") assert.equal(f.asks[0].signal.aborted, true);
   });
 }
 
@@ -210,7 +210,7 @@ test("service rejection is spoken without resending; expired pairing stops the s
   f.asks[1].reject({ status: 401 });
   await flush();
   assert.deepEqual(f.events.at(-1), ["announce", "pairRequired"]);
-  assert.equal(f.asks[1].signal.aborted, true);
+  assert.equal(f.session.state, State.ERROR);
 });
 
 test("Repeat Answer pauses the microphone without making another provider request", async () => {
@@ -232,4 +232,50 @@ test("Repeat Answer pauses the microphone without making another provider reques
   await flush();
   f.clock.tick(10);
   assert.equal(f.session.state, State.LISTENING);
+});
+
+test("language switching cancels outdated speech and stale AI replies before using the new language", async () => {
+  const f = fixture();
+  const mic = await f.begin();
+  mic.finalize(result("Une question"));
+  mic.end();
+  f.session.setLanguage("en");
+  assert.equal(f.asks[0].signal.aborted, true);
+  f.asks[0].resolve({ answer: "Stale" });
+  await flush();
+  f.clock.tick(10);
+  assert.equal(f.mics.at(-1).settings.language, "en");
+  assert.equal(f.answers.includes("Stale"), false);
+  assert.equal(f.session.askTyped("An English question"), true);
+  f.mics.at(-1).end();
+  f.asks[1].resolve({ answer: "English answer" });
+  await flush();
+  assert.equal(f.session.state, State.SPEAKING);
+  f.session.setLanguage("fr");
+  await flush();
+  f.clock.tick(10);
+  assert.equal(f.mics.at(-1).settings.language, "fr");
+});
+
+test("a user transcript wins over a queued proactive observation", async () => {
+  const f = fixture();
+  const mic = await f.begin();
+  f.session.record.started -= 5000;
+  assert.equal(f.session.offerNotice("chair"), true);
+  mic.finalize(result("Read the sign"));
+  mic.end();
+  assert.equal(f.asks[0].question, "Read the sign");
+  assert.equal(f.session.offerNotice("another change"), false);
+  assert.equal(f.spoken.length, 1);
+});
+
+test("a compatible voice warning without fallback does not resume the mic automatically", async () => {
+  const f = fixture();
+  const start = f.session.start(settings);
+  await flush();
+  f.finishVoice("voiceMissing");
+  await start;
+  f.clock.tick(100);
+  assert.equal(f.mics.length, 0);
+  assert.deepEqual(f.events.at(-1), ["announce", "voiceMissing"]);
 });

@@ -223,21 +223,26 @@ class SemanticIndex:
             ).fetchone()
         return {"available": self.available(), "error": self.error, **dict(counts)}
 
-    async def search(self, query, start=None, end=None, limit=12):
+    async def search(self, query, start=None, end=None, limit=12, *, candidate_ids=None):
         if not self.available():
             raise SemanticUnavailable("Local semantic search is not set up. See the model setup in README.")
         if self.query_lock.locked():
             raise SemanticBusy("A local search is already running. Try again shortly.")
         async with self.query_lock:
             try:
-                return await self._run(self.rank, query, start, end, limit)
+                return await self._run(self.rank, query, start, end, limit, candidate_ids)
             except Exception:
                 logger.exception("Local semantic search failed")
                 raise SemanticUnavailable("Local embedding model failed; check the server log.") from None
 
-    def rank(self, query, start, end, limit):
+    def rank(self, query, start, end, limit, candidate_ids=None):
         conditions = ["e.model = ?", "e.embedding IS NOT NULL"]
         params = [self.encoder.model_id]
+        if candidate_ids is not None:
+            if not candidate_ids:
+                return []
+            conditions.append("f.id IN (" + ",".join("?" for _ in candidate_ids) + ")")
+            params.extend(candidate_ids)
         for timestamp, condition in ((start, "f.timestamp >= ?"), (end, "f.timestamp <= ?")):
             if timestamp is not None:
                 conditions.append(condition)

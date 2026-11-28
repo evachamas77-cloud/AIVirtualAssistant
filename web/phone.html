@@ -57,8 +57,11 @@
     <details class="mobile-section">
       <summary data-label="settings">Settings</summary>
       <label for="mobile-language" data-label="language">Speech and answer language</label>
-      <select id="mobile-language"><option value="en" lang="en">English</option><option value="fr" lang="fr">Fran&#231;ais</option></select>
+      <select id="mobile-language" aria-describedby="mobile-voice-choice"><option value="en" lang="en">English</option><option value="fr" lang="fr">Fran&#231;ais</option></select>
+      <p id="mobile-voice-choice"></p>
+      <label class="mobile-check"><input id="describe-changes" type="checkbox"><span data-label="describeChanges">Describe important changes</span></label>
       <button id="mobile-speech-pack" type="button" data-label="speechPack" hidden>Download on-device speech pack</button>
+      <details><summary data-label="timings">Development timings (ms)</summary><p id="mobile-timings"></p></details>
     </details>
     <details id="manual-tools" class="mobile-section">
       <summary data-label="manual">Manual camera and Ask AI</summary>

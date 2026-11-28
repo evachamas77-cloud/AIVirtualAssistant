@@ -48,7 +48,7 @@ async def lifespan(application: FastAPI):
     store = FrameStore(FrameSettings.from_env())
     await run_in_threadpool(store.initialize)
     application.state.frame_store = store
-    live = application.state.live = LiveService(lambda frame: _archive_video_frame(store, frame))
+    live = application.state.live = LiveService(lambda frame, stamp: _archive_video_frame(store, frame, stamp))
     semantic = application.state.semantic = SemanticIndex(store)
     vision = application.state.vision = VisionService(store, semantic, live)
     await run_in_threadpool(semantic.initialize)
@@ -127,6 +127,7 @@ def _analyze_pixels(image: np.ndarray, started: float):
     sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
     errors = {}
+    t0 = perf_counter()
     try:
         objects = detect_objects(image)
     except Exception:
@@ -134,6 +135,8 @@ def _analyze_pixels(image: np.ndarray, started: float):
         objects = []
         errors["object_detection"] = "Object detection unavailable; check server logs."
 
+    detection_ms = (perf_counter() - t0) * 1000
+    t0 = perf_counter()
     try:
         ocr_text, ocr_results = recognize_text(image)
     except Exception:
@@ -150,6 +153,7 @@ def _analyze_pixels(image: np.ndarray, started: float):
         "ocr_text": ocr_text,
         "ocr_results": ocr_results,
         "processing_time_ms": round((perf_counter() - started) * 1000, 2),
+        "timings_ms": {"yolo": round(detection_ms, 2), "ocr": round((perf_counter() - t0) * 1000, 2)},
         "analysis_errors": errors,
     }
 
@@ -172,7 +176,7 @@ def _pixel_hash(image: np.ndarray) -> str:
     return digest.hexdigest()
 
 
-def _archive_video_frame(store: FrameStore, frame):
+def _archive_video_frame(store: FrameStore, frame, captured_at):
     started = perf_counter()
     width, height = frame.width, frame.height
     if max(width, height) > 1280:
@@ -186,7 +190,8 @@ def _archive_video_frame(store: FrameStore, frame):
     contents = encoded.tobytes()
     image = _decode_image(contents)
     analysis = _analyze_pixels(image, started)
-    return store.save(contents, ".jpg", _pixel_hash(image), analysis)
+    saved, reason = store.save(contents, ".jpg", _pixel_hash(image), analysis, captured_at=captured_at)
+    return saved, reason, analysis
 
 
 @app.post("/frames", status_code=201, responses={200: {"description": "Analyzed but not saved"}})

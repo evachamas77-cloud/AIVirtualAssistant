@@ -1,7 +1,7 @@
-const CACHE = "visual-camera-shell-v3";
+const CACHE = "visual-camera-shell-v4";
 const SHELL = [
   "/phone", "/ui/style.css", "/ui/phone.js", "/ui/common.js", "/ui/icons.svg",
-  "/ui/assistant.js", "/ui/voice.js",
+  "/ui/assistant.js", "/ui/voice.js", "/ui/voice-catalog.js",
   "/ui/voice-session.js", "/ui/phone-camera.js", "/ui/mobile-strings.js", "/ui/mobile-question.js",
   "/ui/manifest.webmanifest", "/ui/icon-192.png", "/ui/icon-512.png",
 ];

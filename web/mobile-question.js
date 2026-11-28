@@ -1,24 +1,8 @@
-const historyCue = /\b(?:last time|last (?:see|saw|seen)|previous(?:ly)?|earlier|yesterday|past|history|archives?|when did i|did i (?:ever )?see|have i (?:ever )?seen|derniere fois|hier|precedemment|auparavant|quand ai[- ]je|ai[- ]je (?:deja )?vu|j['\u2019]ai (?:deja )?vu)\b/;
+const historyCue = /\b(?:first (?:time|see|recorded)|earliest|last (?:time|see|saw|seen|recorded)|latest|previous(?:ly)?|earlier|yesterday|past|history|archives?|when (?:did|was|have)|did (?:i|you) (?:ever )?see|have (?:i|you) (?:ever )?seen|what was written|etait ecrit|this morning|hours? ago|premiere fois|derniere fois|hier|precedemment|auparavant|quand|(?:ai[- ]je|as[- ]tu) (?:deja )?vu|j['\u2019]ai (?:deja )?vu|ce matin|il y a .{1,15} heures?)\b/;
 
-export function questionSource(question, now = new Date()) {
+export function questionSource(question) {
   const spoken = question.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
-  if (!historyCue.test(spoken)) return { scope: "current", live_only: true };
-  const source = { scope: "history" };
-  let offset;
-  if (/\b(?:day before yesterday|avant[- ]hier)\b/.test(spoken)) offset = -2;
-  else if (/\b(?:yesterday|hier)\b/.test(spoken)) offset = -1;
-  else if (/\b(?:today|aujourd['\u2019]hui)\b/.test(spoken)) offset = 0;
-  if (offset !== undefined) {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() + offset);
-    const next = new Date(start);
-    next.setDate(next.getDate() + 1);
-    source.start = start.toISOString();
-    // Archive timestamps have microsecond precision; include the whole final millisecond.
-    source.end = new Date(next.getTime() - 1).toISOString().slice(0, -1) + "999Z";
-  }
-  return source;
+  return historyCue.test(spoken) ? { scope: "history" } : { scope: "current", live_only: true };
 }
 
 export function answerError(status, scope) {

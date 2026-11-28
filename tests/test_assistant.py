@@ -311,7 +311,7 @@ def test_history_auto_selection_and_exact_frame(configured, monkeypatch):
         blue = upload(browser, 0, 255)
         wait_index(browser, 2)
         history = answer_request(
-            browser, question="Quand ai-je vu un canap\u00e9 pour la derni\u00e8re fois ?", language="fr", scope="auto"
+            browser, question="Retrouve le canap\u00e9 rouge dans les archives", language="fr", scope="auto"
         ).json()
         assert history["source"] == "history"
         assert [item["frame_id"] for item in history["evidence"]] == [red["id"]]

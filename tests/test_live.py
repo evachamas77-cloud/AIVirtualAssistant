@@ -102,7 +102,7 @@ def test_sampler_respects_interval_and_drops_while_busy(monkeypatch):
         peer = Peer("camera", "", "camera", "", None, 0, track=Track())
         service.peers[peer.id] = peer
 
-        async def process(_, frame):
+        async def process(_, frame, captured_at):
             played.append(frame)
             release.clear()
             await release.wait()

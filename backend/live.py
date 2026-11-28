@@ -15,6 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from .scene import SceneSettings, SceneTracker
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 WEB = Path(__file__).resolve().parents[1] / "web"
@@ -51,6 +53,8 @@ class Peer:
     last_frame_id: int | None = None
     last_result: str | None = None
     capture: tuple[Any, datetime] | None = None
+    analysis: tuple[datetime, dict] | None = None
+    changes: SceneTracker | None = None
 
 
 class LiveService:
@@ -69,6 +73,7 @@ class LiveService:
         if not 16 <= len(self.code) <= 256:
             raise ValueError("LIVE_SESSION_CODE must contain 16 to 256 characters")
         self.interval = float(os.getenv("LIVE_SAMPLE_SECONDS", "2"))
+        self.scene_settings = SceneSettings.from_env()
         if not math.isfinite(self.interval) or self.interval < 0.2:
             raise ValueError("LIVE_SAMPLE_SECONDS must be finite and at least 0.2")
         try:
@@ -175,13 +180,14 @@ class LiveService:
             while peer.id in self.peers:
                 frame = await peer.track.recv()
                 now = peer.activity = monotonic()
-                peer.capture = (frame, datetime.now(UTC))
+                captured_at = datetime.now(UTC)
+                peer.capture = (frame, captured_at)
                 if now < next_sample or (self.work is not None and not self.work.done()):
                     continue
                 next_sample = now + self.interval
                 peer.sampled += 1
                 # The relay is unbuffered and only this task is allowed to dispatch analysis.
-                self.work = asyncio.create_task(self._process(peer, frame))
+                self.work = asyncio.create_task(self._process(peer, frame, captured_at))
         except self.media_error:
             pass
         finally:
@@ -189,13 +195,19 @@ class LiveService:
                 # Detach rather than await close, which also joins this sampler.
                 asyncio.create_task(self.close_peer(peer.id))
 
-    async def _process(self, peer, frame):
+    async def _process(self, peer, frame, captured_at):
         try:
-            result, reason = await run_in_threadpool(self.process_frame, frame)
+            result, reason, analysis = await run_in_threadpool(self.process_frame, frame, captured_at)
             peer.last_result = reason or "saved"
             if result is not None:
                 peer.stored += 1
                 peer.last_frame_id = result["id"]
+            if self.camera is peer:
+                peer.analysis = (captured_at, analysis)
+                if peer.changes is None:
+                    peer.changes = SceneTracker(self.scene_settings)
+                if (datetime.now(UTC) - captured_at).total_seconds() <= 5:
+                    peer.changes.observe(analysis, monotonic())
         except Exception:
             peer.last_result = "processing_error"
             logger.exception("Live sample processing failed")
@@ -252,6 +264,10 @@ class LiveService:
         if camera is not None and monotonic() - camera.activity < 5:
             return camera.capture
         return None
+
+    def recent_analysis(self, captured_at):
+        analysis = self.camera.analysis if self.camera else None
+        return analysis[1] if analysis and 0 <= (captured_at - analysis[0]).total_seconds() <= 2 else None
 
 
 def local_client(request: Request) -> bool:
@@ -335,6 +351,17 @@ async def status(request: Request, response: Response):
     service, _ = require_session(request)
     response.headers["Cache-Control"] = "no-store"
     return service.status()
+
+
+@router.get("/live/changes")
+async def changes(request: Request, response: Response):
+    service, owner = require_session(request)
+    response.headers["Cache-Control"] = "no-store"
+    camera = service.camera
+    if camera is None or camera.owner != owner or not camera.changes or service.latest_capture() is None:
+        return {"change": None}
+    event = camera.changes.latest(monotonic())
+    return {"change": {**event, "id": f'{camera.id}:{event["sequence"]}'} if event else None}
 
 
 @router.post("/live/offer")

@@ -42,7 +42,7 @@ uvicorn.run(main.app, host="127.0.0.1", port=0, access_log=False)
     LIVE_SESSION_CODE: code, FRAME_MIN_SHARPNESS: "0", SEMANTIC_ENABLED: "0" } },
   /Uvicorn running on (http:\/\/127\.0\.0\.1:\d+)/);
   const debug = await launch(chrome, ["--headless=new", "--no-first-run", "--remote-debugging-port=0",
-    `--user-data-dir=${join(root, "chrome")}`, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+    `--user-data-dir=${join(root, "chrome")}`,
     "--disable-features=WebRtcHideLocalIpsWithMdns", "about:blank"], {}, /DevTools listening on ws:\/\/(\S+)\/devtools/);
   const [page] = await fetch(`http://${debug}/json/list`).then(response => response.json());
   socket = new WebSocket(page.webSocketDebuggerUrl);
@@ -90,6 +90,27 @@ uvicorn.run(main.app, host="127.0.0.1", port=0, access_log=False)
   await call("Emulation.setDeviceMetricsOverride", { width: 360, height: 760, deviceScaleFactor: 1, mobile: true });
   await call("Page.addScriptToEvaluateOnNewDocument", { source: `
     window.spoken = []; window.requests = []; window.recognizer = null;
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async constraints => {
+      if (constraints.audio !== false || !constraints.video) throw new Error('Expected a video-only request');
+      const picture = document.createElement('canvas');
+      picture.width = 640;
+      picture.height = 480;
+      const pen = picture.getContext('2d');
+      pen.fillStyle = '#234983';
+      pen.fillRect(0, 0, 640, 480);
+      const stream = picture.captureStream(15);
+      const [track] = stream.getVideoTracks();
+      let x = 0;
+      function paint() {
+        if (track.readyState !== 'live') return;
+        pen.fillStyle = '#fff';
+        pen.fillRect(x % 600, 100, 40, 80);
+        x += 3;
+        requestAnimationFrame(paint);
+      }
+      paint();
+      return stream;
+    }});
     window.SpeechRecognition = class {
       static async available() { return 'available'; }
       start() { if (window.recognizer) throw new Error('Overlapping mic'); window.recognizer = this; }
@@ -101,7 +122,7 @@ uvicorn.run(main.app, host="127.0.0.1", port=0, access_log=False)
       getVoices: () => [{ lang: 'en-US', localService: true }, { lang: 'fr-FR', localService: true }],
       speak(utterance) {
         if (window.recognizer) throw new Error('Spoke over mic');
-        spoken.push([utterance.text, utterance.lang]);
+        spoken.push([utterance.text, utterance.lang, utterance.voice?.lang]);
         setTimeout(() => { utterance.onstart?.(); utterance.onend?.(); }, 50);
       }, cancel() {},
     }});
@@ -109,7 +130,8 @@ uvicorn.run(main.app, host="127.0.0.1", port=0, access_log=False)
     window.fetch = (url, options) => {
       if (url !== '/ai/ask') return original(url, options);
       requests.push(JSON.parse(options.body));
-      return Promise.resolve(new Response(JSON.stringify({ answer: 'Simulated answer ' + requests.length }), {
+      const answer = requests.at(-1).language === 'fr' ? 'Une chaise est visible.' : 'Simulated answer ' + requests.length;
+      return Promise.resolve(new Response(JSON.stringify({ answer }), {
         headers: { 'Content-Type': 'application/json' },
       }));
     };
@@ -131,6 +153,15 @@ uvicorn.run(main.app, host="127.0.0.1", port=0, access_log=False)
   assert.deepEqual(bodies.map(item => [item.scope, item.live_only, item.consent]), [
     ["current", true, true], ["history", undefined, true],
   ]);
+  assert.deepEqual(await evaluate("spoken.at(-1).slice(1)"), ["en-US", "en-US"]);
+  await evaluate("const selector = document.querySelector('#mobile-language'); selector.value = 'fr'; selector.dispatchEvent(new Event('change'));");
+  await until("window.recognizer?.lang === 'fr-FR' && document.documentElement.lang === 'fr'");
+  await evaluate("window.say('Que vois-tu devant moi ?')");
+  await until("window.recognizer?.lang === 'fr-FR' && window.spoken.length === 4");
+  assert.equal(await evaluate("requests.at(-1).language"), "fr");
+  assert.deepEqual(await evaluate("spoken.at(-1).slice(1)"), ["fr-FR", "fr-FR"]);
+  await evaluate("selector.value = 'en'; selector.dispatchEvent(new Event('change'));");
+  await until("window.recognizer?.lang === 'en-US'");
   await until("document.querySelector('#overall').textContent.includes('Camera streaming')");
   const response = await fetch(server + "/frames?limit=1").then(reply => reply.json());
   assert.equal(response.items.length, 1);

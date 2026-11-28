@@ -14,6 +14,8 @@ DEFAULT_STORAGE_DIR = Path(__file__).resolve().parents[1] / "data" / "frames"
 
 
 def utc_timestamp(value: datetime) -> str:
+    if value.utcoffset() is None:
+        raise ValueError("Frame timestamps must be timezone-aware")
     return value.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
@@ -77,6 +79,19 @@ class FrameStore:
                 CREATE INDEX IF NOT EXISTS frames_timestamp ON frames (timestamp, id);
                 """
             )
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("PRAGMA user_version").fetchone()[0] < 1:
+                db.execute("""CREATE TABLE IF NOT EXISTS frame_objects (
+                    frame_id INTEGER NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
+                    label TEXT NOT NULL, confidence REAL NOT NULL, PRIMARY KEY(frame_id, label))""")
+                db.execute("CREATE INDEX IF NOT EXISTS frame_objects_label ON frame_objects(label, frame_id)")
+                db.execute("""INSERT OR IGNORE INTO frame_objects SELECT f.id, lower(trim(o.value ->> 'name')),
+                    max(CAST(o.value ->> 'confidence' AS REAL)) FROM frames f,
+                    json_each(CASE WHEN json_valid(f.objects_json) THEN f.objects_json ELSE '[]' END) o
+                    WHERE o.type = 'object' AND length(trim(o.value ->> 'name')) > 0
+                      AND json_type(o.value, '$.confidence') IN ('real', 'integer')
+                    GROUP BY f.id, lower(trim(o.value ->> 'name'))""")
+                db.execute("PRAGMA user_version = 1")
 
     @staticmethod
     def _metadata(row: sqlite3.Row) -> dict:
@@ -87,7 +102,7 @@ class FrameStore:
         return data
 
     def save(
-        self, contents: bytes, extension: str, pixel_hash: str, analysis: dict
+        self, contents: bytes, extension: str, pixel_hash: str, analysis: dict, *, captured_at: datetime | None = None
     ) -> tuple[dict | None, str | None]:
         if analysis["analysis_errors"]:
             return None, "analysis_failed"
@@ -102,7 +117,7 @@ class FrameStore:
                 if db.execute("SELECT 1 FROM frames WHERE pixel_hash = ?", (pixel_hash,)).fetchone():
                     return None, "duplicate"
 
-                now = datetime.now(UTC)
+                now = captured_at if captured_at is not None else datetime.now(UTC)
                 last = db.execute(
                     "SELECT timestamp FROM frames ORDER BY timestamp DESC, id DESC LIMIT 1"
                 ).fetchone()
@@ -128,6 +143,13 @@ class FrameStore:
                         json.dumps(analysis["objects"]), json.dumps(analysis["ocr_results"]),
                     ),
                 )
+                objects = {}
+                for obj in analysis["objects"]:
+                    label = obj["name"].strip().lower()
+                    if label:
+                        objects[label] = max(objects.get(label, 0), obj["confidence"])
+                db.executemany("INSERT INTO frame_objects(frame_id, label, confidence) VALUES (?, ?, ?)",
+                               [(cursor.lastrowid, label, score) for label, score in objects.items()])
                 row = db.execute("SELECT * FROM frames WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 frame = self._metadata(row)
         except Exception:
@@ -138,6 +160,32 @@ class FrameStore:
                     logger.exception("Could not remove image after a failed frame save: %s", image)
             raise
         return frame, None
+
+    def observations(self, *, start=None, end=None, label=None, min_confidence=0.45,
+                     has_text=False, text=None, earliest=False, limit=12):
+        filters, args = [], []
+        join = ""
+        if label is not None:
+            join = "JOIN frame_objects o ON o.frame_id = f.id"
+            filters.append("o.label = ? AND o.confidence >= ?")
+            args.extend((label, min_confidence))
+        if start is not None:
+            filters.append("f.timestamp >= ?")
+            args.append(start)
+        if end is not None:
+            filters.append("f.timestamp <= ?")
+            args.append(end)
+        if has_text:
+            filters.append("length(trim(f.ocr_text)) > 0")
+        if text:
+            filters.append("instr(casefold(f.ocr_text), ?) > 0")
+            args.append(text.casefold())
+        where = " WHERE " + " AND ".join(filters) if filters else ""
+        direction = "ASC" if earliest else "DESC"
+        with self._connect() as db:
+            rows = db.execute(f"SELECT f.* FROM frames f {join}{where} ORDER BY f.timestamp {direction}, "
+                              f"f.id {direction} LIMIT ?", (*args, limit)).fetchall()
+            return [self._metadata(row) for row in rows]
 
     def list_frames(
         self, *, start: str | None, end: str | None,

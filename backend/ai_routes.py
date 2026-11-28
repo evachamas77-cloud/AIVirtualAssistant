@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, time
+import asyncio
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, StrictBool, StringConstraints, model_vali
 from starlette.concurrency import run_in_threadpool
 
 from .frame_store import utc_timestamp
+from .history import parse_bound
 from .live import require_session
 from .semantic import SemanticBusy, SemanticUnavailable
 
@@ -18,14 +19,7 @@ def date_window(start, end):
         if value is None:
             return None
         try:
-            if len(value) == 10:
-                day = date.fromisoformat(value)
-                stamp = datetime.combine(day, time.max if for_end else time.min, tzinfo=UTC)
-            else:
-                stamp = datetime.fromisoformat(value)
-                if stamp.utcoffset() is None:
-                    raise ValueError
-            return utc_timestamp(stamp)
+            return utc_timestamp(parse_bound(value, for_end))
         except (ValueError, OverflowError):
             raise HTTPException(422, detail="Use YYYY-MM-DD or an ISO timestamp with a time zone.") from None
 
@@ -110,10 +104,24 @@ async def semantic_search(
 async def ask(request: Request, response: Response, question: Question):
     owner = authorize(request, response, post=True)
     start, end = date_window(question.start, question.end)
+    async def watch_disconnect():
+        while (await request.receive())["type"] != "http.disconnect":
+            pass
+
+    answer = asyncio.create_task(request.app.state.vision.ask(question, owner, start, end))
+    disconnected = asyncio.create_task(watch_disconnect())
     try:
-        return await request.app.state.vision.ask(question, owner, start, end)
+        done, _ = await asyncio.wait((answer, disconnected), return_when=asyncio.FIRST_COMPLETED)
+        if answer in done:
+            return answer.result()
+        return Response(status_code=499, headers=NO_CACHE)
     except (SemanticUnavailable, SemanticBusy) as exc:
         raise search_error(exc) from None
+    finally:
+        for task in (answer, disconnected):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(answer, disconnected, return_exceptions=True)
 
 
 @router.get("/evidence/{frame_id}")

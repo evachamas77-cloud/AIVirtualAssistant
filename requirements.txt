@@ -8,3 +8,4 @@ tesserocr>=2.13,<3
 aiortc>=1.14,<2
 openai>=2,<3
 Pillow
+tzdata>=2025.2

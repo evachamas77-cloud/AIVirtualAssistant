@@ -86,14 +86,10 @@ test("current scenes use live-only; common English and French questions use arch
   assert.equal(answerError(undefined, "current"), "connectionLost");
 });
 
-test("EN/FR relative dates filter by the device's local day", () => {
-  const now = new Date(2026, 10, 22, 14);
-  const yesterday = new Date(2026, 10, 21);
-  const end = new Date(2026, 10, 22).getTime() - 1;
-  for (const question of ["What did I see yesterday?", "Qu'est-ce que j'ai vu hier ?"]) {
-    assert.deepEqual(questionSource(question, now), {
-      scope: "history", start: yesterday.toISOString(), end: new Date(end).toISOString().slice(0, -1) + "999Z",
-    });
+test("EN/FR relative dates are resolved on the Beirut-aware server", () => {
+  for (const question of ["What did I see yesterday?", "Qu'est-ce que j'ai vu hier ?",
+    "What was on the table two hours ago?", "Qu'as-tu vu ce matin ?"]) {
+    assert.deepEqual(questionSource(question), { scope: "history" });
   }
   assert.deepEqual(Object.keys(strings.fr).sort(), Object.keys(strings.en).sort());
   assert.notEqual(strings.fr.readyPrompt, strings.en.readyPrompt);
